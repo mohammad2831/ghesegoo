@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # سرویس پیام‌رسان (Broker) برای Celery
+  redis:
+    image: redis:alpine
+    container_name: ghesegoo_redis
+    networks:
+      - ghesegoo_network
+
+  # سرور اصلی جانگوی هوش مصنوعی
+  ai_ghesegoo:
+    build: .
+    container_name: ai_ghesegoo
+    # پورت 8000 داخلی به پورت 8000 روی سیستم‌عامل متصل می‌شود (برای دسترسی سرور اصلی)
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "python manage.py makemigrations &&
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      # مپ کردن سورس کدها برای توسعه راحت‌تر (بدون نیاز به بیلد مجدد پس از هر تغییر)
+      - .:/app
+    depends_on:
+      - redis
+    networks:
+      - ghesegoo_network
+    environment:
+      # آدرس اتصال سلری به ردیس داخلی داکر
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+  # سرویس پردازشگر پس‌زمینه (Celery Worker)
+  celery_worker:
+    build: .
+    container_name: ghesegoo_celery_worker
+    command: celery -A ai_ghesegoo worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - ai_ghesegoo
+    networks:
+      - ghesegoo_network
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+networks:
+  # شبکه‌ی مشترک اختصاصی برای ارتباط کانتینرها
+  ghesegoo_network:
+    driver: bridge
