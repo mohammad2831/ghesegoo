@@ -4,7 +4,9 @@ from django.db import models
 class GeneratedStory(models.Model):
     STATUS_CHOICES = (
         ('pending', 'در انتظار تولید'),
-        ('processing', 'در حال پردازش (متن و صوت)'),
+        ('generating_text', 'در حال تولید متن داستان'),
+        ('text_generated', 'متن آماده شد (در صف تولید صوت)'),
+        ('generating_audio', 'در حال تبدیل متن به صوت'),
         ('completed', 'تکمیل شده'),
         ('failed', 'خطا در تولید'),
     )
@@ -13,7 +15,7 @@ class GeneratedStory(models.Model):
     external_user_id = models.IntegerField(db_index=True)
     image_id = models.IntegerField(help_text="شناسه عکس انتخاب شده (۱ تا ۱۲)")
     user_prompt = models.TextField(null=True, blank=True, help_text="متن اختیاری کاربر")
-    # خروجی‌های هوش مصنوعی که در گام بعدی توسط سلری پر می‌شوند
+    
     generated_text = models.TextField(null=True, blank=True, help_text="داستان تولید شده توسط مدل زبانی")
     generated_audio = models.FileField(upload_to='generated_stories/audio/', null=True, blank=True)
 
@@ -24,4 +26,4 @@ class GeneratedStory(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Story {self.id} - User: {self.external_user_id} - {self.status}"
+        return f"Story {self.id} | User: {self.external_user_id} | Status: {self.get_status_display()}"

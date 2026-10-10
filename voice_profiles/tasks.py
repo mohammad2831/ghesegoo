@@ -33,7 +33,7 @@ def validate_voice_profile_task(profile_id):
         profile.sample_rate = metadata.get('sample_rate')
         profile.save()
         
-        logger.info(f"✅ Profile {profile_id} Approved: {message}")
+        logger.info(f"Profile {profile_id} Approved: {message}")
         
     else:
         profile.status = 'rejected'
@@ -69,13 +69,13 @@ def validate_voice_profile_task(profile_id):
         response = requests.post(webhook_url, json=webhook_payload, headers=headers, timeout=5.0)
         
         if response.status_code == 200:
-            logger.info(f"🌐 Webhook successfully delivered for audio {profile.external_audio_id}")
+            logger.info(f"Webhook successfully delivered for audio {profile.external_audio_id}")
         else:
-            logger.warning(f"⚠️ Webhook delivered but main server returned {response.status_code}: {response.text}")
+            logger.warning(f"Webhook delivered but main server returned {response.status_code}: {response.text}")
             
     except requests.RequestException as e:
         # اگر سرور اصلی خاموش باشد یا شبکه قطع باشد، تسک کرش نمی‌کند و فقط لاگ می‌اندازد
-        logger.error(f"🚨 Failed to send webhook to main server: {e}")
+        logger.error(f"Failed to send webhook to main server: {e}")
 
     # بازگرداندن پیام نهایی برای ثبت در نتیجه خود Celery
     if is_valid:

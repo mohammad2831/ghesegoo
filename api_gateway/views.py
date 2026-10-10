@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from voice_profiles.tasks import validate_voice_profile_task # ایمپورت تسک
+from story_engine.tasks import generate_story_text_task
 
 from .permissions import IsMainServer
 from .serializers import GatewayProfileUploadSerializer, GatewayImageSelectionSerializer, StoryRequestSerializer
@@ -17,7 +18,7 @@ from story_engine.models import GeneratedStory
 #from voice_conversion.models import ConversionJob
 #from voice_conversion.tasks import process_voice_conversion_task
 
-
+from django.db import transaction 
 
 
 class ImageSelectionGatewayView(APIView):
@@ -121,10 +122,9 @@ class StoryGenerationGatewayView(APIView):
         if serializer.is_valid():
             ext_user_id = serializer.validated_data['external_user_id']
             img_id = serializer.validated_data['image_id']
-            
-            # استفاده از get برای جلوگیری از خطای KeyError در صورت ارسال نشدن متن
             user_text = serializer.validated_data.get('user_text', '')
 
+            # ساخت رکورد در دیتابیس
             story_record = GeneratedStory.objects.create(
                 external_user_id=ext_user_id,
                 image_id=img_id,
@@ -132,10 +132,12 @@ class StoryGenerationGatewayView(APIView):
                 status='pending'
             )
 
-            # ۲. ارسال رکورد به صف پردازش سلری (کد این تسک در مرحله بعد نوشته می‌شود)
-            # generate_story_pipeline_task.delay(story_record.id)
+            # تغییر مهم: شلیک تسک به سلری، فقط پس از تایید نهایی ذخیره در دیتابیس
+            transaction.on_commit(
+                lambda: generate_story_text_task.delay(str(story_record.id))
+            )
 
-            # ۳. پاسخ فوری به سرور اصلی جانگو
+            # پاسخ فوری به سرور اصلی جانگو
             return Response({
                 "message": "درخواست دریافت شد.",
                 "story_id": str(story_record.id)
