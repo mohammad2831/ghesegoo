@@ -157,3 +157,21 @@ SPECTACULAR_SETTINGS = {
 
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+
+
+CELERY_TASK_ROUTES = {
+    'story_engine.tasks.generate_story_text_task': {
+        'queue': 'default_queue',
+    },
+    'voice_profiles.tasks.validate_voice_profile_task': {
+        'queue': 'default_queue',
+    },
+    
+    # تسک سنگین مدل Chatterbox به یک صف اختصاصی برای GPU می‌رود
+    'story_engine.tasks.generate_story_audio_task': {
+        'queue': 'gpu_queue',
+    },
+}

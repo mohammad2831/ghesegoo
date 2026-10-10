@@ -1,18 +1,17 @@
 version: '3.8'
 
 services:
-  # سرویس پیام‌رسان (Broker) برای Celery
+  # ۱. سرویس پیام‌رسان (Broker)
   redis:
     image: redis:alpine
     container_name: ghesegoo_redis
     networks:
       - ghesegoo_network
 
-  # سرور اصلی جانگوی هوش مصنوعی
+  # ۲. سرور اصلی جانگو (فقط پاسخگویی به API)
   ai_ghesegoo:
     build: .
     container_name: ai_ghesegoo
-    # پورت 8000 داخلی به پورت 8000 روی سیستم‌عامل متصل می‌شود (برای دسترسی سرور اصلی)
     ports:
       - "8000:8000"
     command: >
@@ -20,24 +19,26 @@ services:
              python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
-      # مپ کردن سورس کدها برای توسعه راحت‌تر (بدون نیاز به بیلد مجدد پس از هر تغییر)
       - .:/app
+      - ./media:/app/media
     depends_on:
       - redis
     networks:
       - ghesegoo_network
     environment:
-      # آدرس اتصال سلری به ردیس داخلی داکر
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - HF_TOKEN=${HF_TOKEN}
 
-  # سرویس پردازشگر پس‌زمینه (Celery Worker)
-  celery_worker:
+  # ۳. ورکر سلری سبک (متن و API فردوسی)
+  celery_default:
     build: .
-    container_name: ghesegoo_celery_worker
-    command: celery -A ai_ghesegoo worker --loglevel=info
+    container_name: ghesegoo_celery_default
+    # گوش دادن فقط به صف default با ۴ پردازش موازی
+    command: celery -A ai_ghesegoo worker -Q default_queue --concurrency=4 --loglevel=info
     volumes:
       - .:/app
+      - ./media:/app/media
     depends_on:
       - redis
       - ai_ghesegoo
@@ -47,7 +48,35 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
 
+  # ۴. ورکر سلری سنگین (تولید صوت با GPU و Chatterbox)
+  celery_gpu:
+    build: .
+    container_name: ghesegoo_celery_gpu
+    # گوش دادن فقط به صف gpu با ۱ پردازش موازی جهت جلوگیری از خطای OOM
+    command: celery -A ai_ghesegoo worker -Q gpu_queue --concurrency=1 --loglevel=info
+    volumes:
+      - .:/app
+      - ./media:/app/media
+      # متصل کردن پوشه کش مدل‌ها به هارد سیستم شما
+      - ./hf_cache:/app/hf_cache
+    depends_on:
+      - redis
+      - ai_ghesegoo
+    networks:
+      - ghesegoo_network
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # توکن هانگینگ‌فیس (از کانفیگ قبلی شما)
+      - HF_TOKEN=${HF_TOKEN}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility]
+
 networks:
-  # شبکه‌ی مشترک اختصاصی برای ارتباط کانتینرها
   ghesegoo_network:
     driver: bridge

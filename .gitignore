@@ -1,0 +1,19 @@
+# Environments
+.env
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django
+*.log
+media/
+media/outputs/
+db.sqlite3
+
+# HuggingFace & ML
+hf_cache/
+models_cache/

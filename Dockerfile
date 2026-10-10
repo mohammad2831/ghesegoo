@@ -1,24 +1,33 @@
-# استفاده از نسخه سبک و رسمی پایتون
-FROM python:3.10-slim
+# استفاده از ایمیج رسمی PyTorch حاوی درایورهای CUDA
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
 
-# تنظیم متغیرهای محیطی برای جلوگیری از تولید فایل‌های اضافی پایتون و نمایش سریع لاگ‌ها
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+# مسیر کش مدل‌های هانگینگ‌فیس
+ENV HF_HOME=/app/hf_cache
 
-# ایجاد دایرکتوری کاری در کانتینر
 WORKDIR /app
 
-# نصب وابستگی‌های سیستمی مورد نیاز برای پردازش صوت (ضروری برای librosa)
+# نصب ابزارهای سیستمی برای پردازش صوت و بیلد پکیج‌ها
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 \
     ffmpeg \
+    libsndfile1 \
     gcc \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# کپی کردن فایل نیازمندی‌ها و نصب پکیج‌های پایتون
+# کپی فایل نیازمندی‌ها (شما باید requirements هر دو پروژه را در این فایل ادغام کنید)
 COPY requirements.txt /app/
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
 
-# کپی کردن کل کدهای پروژه به داخل کانتینر
+# نصب PyTorch با پشتیبانی CUDA (طبق تنظیمات قبلی شما)
+RUN pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+RUN pip install --no-cache-dir -r requirements.txt
+
+# کپی کل پروژه
 COPY . /app/
+
+# ساخت پوشه‌های ضروری در صورت عدم وجود
+RUN mkdir -p /app/media/outputs
+RUN mkdir -p /app/hf_cache
+
+EXPOSE 8000
