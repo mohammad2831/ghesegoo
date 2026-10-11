@@ -8,7 +8,7 @@ def generate_story_text(image_context: str, user_prompt: str) -> str:
     """
     دریافت تحلیل عکس و ایده کاربر، ترکیب آن‌ها در یک پرامپت و دریافت متن خالص داستان از LLM.
     """
-    api_key = "XS-WIcdhIrSDuyRdzsBnV7NRFc-MSzOL6aHQnhd0aiU-2WpUKm33C3IFWaQZEX7j"
+    api_key = "mAaN04NuhwPn6Grk3OByq0Zsz1RotrknzqlwYbUjV5Ky03Pl1n-X-vmjqItruoEx"
     url = "https://api.ferdowsi.cloud/api/v1/ai/llm/"
     
     # پرامپت مهندسی شده برای دریافت صرفاً متن داستان
@@ -50,6 +50,9 @@ def generate_story_text(image_context: str, user_prompt: str) -> str:
     try:
         # استفاده از پارامتر json به جای data=json.dumps
         response = requests.post(url, headers=headers, json=payload, timeout=30.0)
+        if response.status_code != 200:
+            logger.error(f"Ferdowsi API Rejected: {response.status_code} - {response.text}")
+            return None
         response.raise_for_status()
         
         result = response.json()
@@ -62,6 +65,8 @@ def generate_story_text(image_context: str, user_prompt: str) -> str:
     except requests.exceptions.RequestException as e:
         error_details = e.response.text if hasattr(e, 'response') and e.response else str(e)
         logger.error(f"LLM API Error: {error_details}")
+
+        
         
         # در صورت خطا، None یا یک متن خالی برمی‌گردانیم تا سلری متوجه شکست تسک بشود
         return None

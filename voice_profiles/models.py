@@ -3,10 +3,14 @@ import os
 from django.db import models
 
 def user_directory_path(instance, filename):
-
+    # استخراج پسوند فایل اصلی (مثلاً wav یا mp3)
     ext = filename.split('.')[-1]
-    new_filename = f"{uuid.uuid4()}.{ext}"
-    return f"users/user_{instance.external_user_id}/profiles/{new_filename}"
+    
+    # به جای uuid تصادفی، مستقیماً از آیدی صوتی کاربر استفاده می‌کنیم
+    new_filename = f"{instance.external_audio_id}.{ext}"
+    
+    # مسیر نهایی با همان ساختار پوشه‌بندی دقیق شما
+    return f"users/user_{instance.external_user_id}/{new_filename}"
 
 class VoiceProfile(models.Model):
     STATUS_CHOICES = (

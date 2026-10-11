@@ -13,6 +13,7 @@ class GeneratedStory(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     external_user_id = models.IntegerField(db_index=True)
+    external_audio_id = models.IntegerField(db_index=True)
     image_id = models.IntegerField(help_text="شناسه عکس انتخاب شده (۱ تا ۱۲)")
     user_prompt = models.TextField(null=True, blank=True, help_text="متن اختیاری کاربر")
     

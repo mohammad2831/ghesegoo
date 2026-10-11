@@ -1,5 +1,7 @@
 import logging
 from celery import shared_task
+import os
+import requests
 
 # نام مدل عکس شما به ImageProfile تغییر کرد
 from .models import GeneratedStory 
@@ -8,6 +10,7 @@ from .text_generation import generate_story_text
 
 from django.core.files.base import ContentFile
 from .audio_generation import ChatterboxService
+from voice_profiles.models import VoiceProfile
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +65,6 @@ def generate_story_text_task(self, story_id):
     return f"Text generation finished. Audio task queued for story {story_id}."
 
 
-
 @shared_task(bind=True, max_retries=2)
 def generate_story_audio_task(self, story_id):
     try:
@@ -72,31 +74,107 @@ def generate_story_audio_task(self, story_id):
 
     story.status = 'generating_audio'
     story.save()
+    
+    # تنظیمات وب‌هوک (آدرس و هدرها در ابتدای تسک تعریف می‌شوند تا در همه بخش‌ها در دسترس باشند)
+    webhook_url = "http://storyteller-api:8000/api/webhook/story-ready/" 
+    headers = {
+        # "X-API-Key": "YOUR_SECRET_KEY" # اگر سرور اصلی نیاز به توکن دارد، اینجا فعال کنید
+    }
 
-    # پیدا کردن مسیر فایل رفرنس 
-    # (بسته به معماری شما، اگر رفرنس ثابت است مسیر آن را بدهید، اگر متغیر است از مدل کاربر بخوانید)
-    ref_audio_path = "/path/to/your/project/audio_samples/sample_ref.wav"
+    # ۱. پیدا کردن مسیر فایل رفرنس
+    try:
+        voice_profile = VoiceProfile.objects.get(
+            external_user_id=story.external_user_id,
+            external_audio_id=story.external_audio_id,
+            status='approved'
+        )
+        ref_audio_path = voice_profile.audio_file.path
+        
+    except VoiceProfile.DoesNotExist:
+        ref_audio_path = f"/app/users/user_{story.external_user_id}/{story.external_audio_id}.wav"
+        logger.warning(f"VoiceProfile DB record missing. Using fallback path: {ref_audio_path}")
 
-    # فراخوانی سرویس چترباکس
+    # ۲. بررسی امنیتی: فایل رفرنس وجود دارد؟
+    if not os.path.exists(ref_audio_path):
+        error_msg = f"فایل صدای کاربر پیدا نشد: {ref_audio_path}"
+        logger.error(error_msg)
+        
+        story.status = 'failed'
+        story.error_message = error_msg
+        story.save()
+        
+        # 🔴 ارسال وب‌هوک ارور به سرور اصلی
+        try:
+            requests.post(
+                webhook_url, 
+                data={"external_user_id": story.external_user_id, "status": "failed", "error_message": "فایل صدای الگو پیدا نشد."}, 
+                headers=headers, 
+                timeout=10
+            )
+        except Exception as e:
+            logger.error(f"Failed to send error webhook: {e}")
+            
+        return "Task failed: Reference audio missing"
+
+    # ۳. فراخوانی چترباکس
     tts_service = ChatterboxService()
     is_success, audio_binary_or_error = tts_service.generate_audio(story.generated_text, ref_audio_path)
 
     if not is_success:
         logger.warning(f"TTS Error: {audio_binary_or_error}. Retrying...")
         try:
-            raise self.retry(countdown=60) # تاخیر زیاد برای آزاد شدن VRAM
+            raise self.retry(countdown=60) # تاخیر برای آزاد شدن VRAM
         except self.MaxRetriesExceededError:
             story.status = 'failed'
             story.error_message = f"خطای TTS: {audio_binary_or_error}"
             story.save()
+            
+            # 🔴 ارسال وب‌هوک ارور به سرور اصلی (وقتی تلاش مجدد تمام شد)
+            try:
+                requests.post(
+                    webhook_url, 
+                    data={"external_user_id": story.external_user_id, "status": "failed", "error_message": "تولید صدا با خطا مواجه شد."}, 
+                    headers=headers, 
+                    timeout=10
+                )
+            except Exception as e:
+                logger.error(f"Failed to send error webhook: {e}")
+                
             return "Task failed at TTS."
 
-    # ذخیره فایل در دیتابیس (ContentFile بایت‌ها را تبدیل به فایل استاندارد جانگو می‌کند)
+    # ذخیره فایل نهایی
     file_name = f"story_{story.external_user_id}_{story.id}.wav"
     story.generated_audio.save(file_name, ContentFile(audio_binary_or_error), save=True)
     
     story.status = 'completed'
     story.save()
     logger.info(f"🎙️ Audio successfully generated for story {story_id}")
+
+    # ==========================================
+    # ۴. ارسال وب‌هوک موفقیت‌آمیز به سرور اصلی
+    # ==========================================
+    payload = {
+        "external_user_id": story.external_user_id,
+        "generated_text": story.generated_text,
+        "status": "success"
+    }
+    
+    try:
+        # باز کردن فایل صوتی ذخیره شده برای ارسال
+        with open(story.generated_audio.path, 'rb') as audio_file:
+            files = {
+                'audio_file': (f"{story.id}.wav", audio_file, 'audio/wav')
+            }
+            
+            logger.info("Sending success webhook to main server...")
+            response = requests.post(webhook_url, data=payload, files=files, headers=headers, timeout=30)
+            
+            if response.status_code in [200, 201, 202]:
+                logger.info(f"✅ Webhook delivered successfully: {response.status_code}")
+            else:
+                logger.error(f"⚠️ Webhook failed with status {response.status_code}: {response.text}")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to send webhook: {str(e)}")
 
     return f"Pipeline completed for {story_id}"

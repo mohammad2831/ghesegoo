@@ -17,6 +17,7 @@ class GatewayImageSelectionSerializer(serializers.Serializer):
 
 class StoryRequestSerializer(serializers.Serializer):
     external_user_id = serializers.IntegerField(required=True)
+    external_audio_id = serializers.IntegerField(required=True)
     image_id = serializers.IntegerField(required=True)
     
     # تغییر required=False و اجازه دادن به مقادیر خالی

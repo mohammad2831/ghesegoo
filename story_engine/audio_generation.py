@@ -84,10 +84,21 @@ class ChatterboxService:
         from chatterbox import mtl_tts
 
         try:
-            model_dir = snapshot_download(repo_id="Thomcles/Chatterbox-TTS-Persian-Farsi")
+            # خواندن توکن جدید از فایل .env
+            hf_token = os.environ.get("HF_TOKEN")
+            
+            if not hf_token:
+                logger.error("خطا: توکن HuggingFace در فایل .env پیدا نشد!")
+            
+            # پاس دادن مستقیم توکن به تابع دانلود
+            model_dir = snapshot_download(
+                repo_id="Thomcles/Chatterbox-TTS-Persian-Farsi",
+                token=hf_token
+            )
+            
             multilingual_model = mtl_tts.ChatterboxMultilingualTTS.from_pretrained(device=cls._device)
             
-            # لود کردن وزن‌های مدل... (مطابق کد قبلی شما)
+            # لود کردن وزن‌های مدل...
             t3_path = os.path.join(model_dir, "t3_fa.safetensors")
             if os.path.exists(t3_path):
                 multilingual_model.t3.load_state_dict(load_safetensors(t3_path, device=cls._device), strict=False)
@@ -119,6 +130,8 @@ class ChatterboxService:
 
             with torch.inference_mode():
                 for chunk in text_chunks:
+                    if not chunk.strip():
+                        continue
                     wav_chunk = model.generate(
                         text=chunk, language_id=None,
                         temperature=0.7, cfg_weight=0.5, top_p=0.5,
@@ -133,6 +146,8 @@ class ChatterboxService:
             if not all_waveforms: return False, "صوتی تولید نشد."
 
             final_waveform = torch.cat(all_waveforms, dim=1)
+            if final_waveform.size(1) == 0:
+                return False, "طول فایل صوتی تولید شده صفر است! احتمالاً فایل صدای الگو خراب یا کاملاً سکوت است."
             # نرمال سازی
             max_amp = final_waveform.abs().max()
             if max_amp > 1.0: final_waveform /= max_amp

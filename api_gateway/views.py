@@ -121,12 +121,14 @@ class StoryGenerationGatewayView(APIView):
         
         if serializer.is_valid():
             ext_user_id = serializer.validated_data['external_user_id']
+            ext_audio_id = serializer.validated_data['external_audio_id']
             img_id = serializer.validated_data['image_id']
             user_text = serializer.validated_data.get('user_text', '')
 
             # ساخت رکورد در دیتابیس
             story_record = GeneratedStory.objects.create(
                 external_user_id=ext_user_id,
+                external_audio_id = ext_audio_id,
                 image_id=img_id,
                 user_prompt=user_text,
                 status='pending'

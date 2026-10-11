@@ -13,7 +13,7 @@ services:
     build: .
     container_name: ai_ghesegoo
     ports:
-      - "8000:8000"
+      - "8001:8000"
     command: >
       sh -c "python manage.py makemigrations &&
              python manage.py migrate &&
@@ -29,6 +29,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - HF_TOKEN=${HF_TOKEN}
+      - FORKED_BY_MULTIPROCESSING=1
 
   # ۳. ورکر سلری سبک (متن و API فردوسی)
   celery_default:
@@ -50,32 +51,33 @@ services:
 
   # ۴. ورکر سلری سنگین (تولید صوت با GPU و Chatterbox)
   celery_gpu:
-    build: .
-    container_name: ghesegoo_celery_gpu
-    # گوش دادن فقط به صف gpu با ۱ پردازش موازی جهت جلوگیری از خطای OOM
-    command: celery -A ai_ghesegoo worker -Q gpu_queue --concurrency=1 --loglevel=info
-    volumes:
-      - .:/app
-      - ./media:/app/media
+      build: .
+      container_name: ghesegoo_celery_gpu
+    # گوش دادن فقط به صف gpu با پردازش تک‌نخی (solo) برای جلوگیری از خطای CUDA و OOM
+      command: celery -A ai_ghesegoo worker -Q gpu_queue -l info --pool=solo
+      volumes:
+        - .:/app
+        - ./media:/app/media
       # متصل کردن پوشه کش مدل‌ها به هارد سیستم شما
-      - ./hf_cache:/app/hf_cache
-    depends_on:
-      - redis
-      - ai_ghesegoo
-    networks:
-      - ghesegoo_network
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      # توکن هانگینگ‌فیس (از کانفیگ قبلی شما)
-      - HF_TOKEN=${HF_TOKEN}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, compute, utility]
+        - ./hf_cache:/app/hf_cache
+      depends_on:
+        - redis
+        - ai_ghesegoo
+      networks:
+        - ghesegoo_network
+      environment:
+        - CELERY_BROKER_URL=redis://redis:6379/0
+        - CELERY_RESULT_BACKEND=redis://redis:6379/0
+        - HF_TOKEN=${HF_TOKEN}
+      # معرفی مسیر کَش به هاگینگ‌فیس تا دانلودها در رم سرگردان نشوند
+        - HF_HOME=/app/hf_cache
+      deploy:
+        resources:
+          reservations:
+            devices:
+              - driver: nvidia
+                count: all
+                capabilities: [gpu, compute, utility]
 
 networks:
   ghesegoo_network:
